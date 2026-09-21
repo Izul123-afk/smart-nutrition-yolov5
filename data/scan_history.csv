@@ -1,0 +1,1 @@
+scan_id,timestamp,label,confidence,weight_grams,object_count,capture_ms,preprocess_ms,inference_ms,postprocess_ms,total_ms,model,model_input

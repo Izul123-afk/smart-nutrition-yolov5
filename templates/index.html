@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FoodVision Research Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
+</head>
+<body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <div class="app-shell">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">LOCAL AI RESEARCH SYSTEM</p>
+                <h1>FoodVision <span>Analytics</span></h1>
+                <p class="subtitle">
+                    Identifikasi makanan berbasis YOLOv5 PyTorch dan pengukuran massa HX711.
+                </p>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="clock-card">
+                    <span class="clock-label">Waktu sistem</span>
+                    <strong id="systemClock">--:--:--</strong>
+                    <small id="systemDate">--</small>
+                </div>
+                <div class="system-badge" id="systemBadge">
+                    <span class="pulse-dot"></span>
+                    <span>Memeriksa sistem</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="status-grid">
+            <article class="metric-card">
+                <div class="metric-icon camera-icon">CAM</div>
+                <div>
+                    <span class="metric-label">Kamera</span>
+                    <strong id="cameraStatus">Memuat...</strong>
+                    <small id="cameraDetail">-</small>
+                </div>
+            </article>
+
+            <article class="metric-card">
+                <div class="metric-icon sensor-icon">HX</div>
+                <div>
+                    <span class="metric-label">Sensor berat</span>
+                    <strong id="sensorStatus">Memuat...</strong>
+                    <small id="sensorDetail">-</small>
+                </div>
+            </article>
+
+            <article class="metric-card">
+                <div class="metric-icon model-icon">AI</div>
+                <div>
+                    <span class="metric-label">Model</span>
+                    <strong id="modelStatus">Memuat...</strong>
+                    <small id="modelDetail">-</small>
+                </div>
+            </article>
+
+            <article class="metric-card weight-card">
+                <div class="metric-icon weight-icon">g</div>
+                <div>
+                    <span class="metric-label">Berat real-time</span>
+                    <strong><span id="liveWeight">0.00</span> g</strong>
+                    <small>Moving average aktif</small>
+                </div>
+            </article>
+        </section>
+
+        <main class="dashboard-grid">
+            <section class="panel camera-panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="section-kicker">LIVE MONITORING</p>
+                        <h2>Pratinjau Kamera</h2>
+                    </div>
+                    <div class="live-chip">
+                        <span class="live-dot"></span>
+                        LIVE
+                    </div>
+                </div>
+
+                <div class="camera-stage">
+                    <img
+                        id="cameraFeed"
+                        src="{{ url_for('video_feed') }}"
+                        alt="Pratinjau langsung kamera Raspberry Pi"
+                    >
+                    <div class="camera-overlay">
+                        <div class="corner top-left"></div>
+                        <div class="corner top-right"></div>
+                        <div class="corner bottom-left"></div>
+                        <div class="corner bottom-right"></div>
+                        <span id="cameraOverlayText">RAW PREVIEW · INFERENCE OFF</span>
+                    </div>
+                </div>
+
+                <div class="camera-controls">
+                    <button type="button" class="primary-button" id="scanButton">
+                        <span class="button-icon">◎</span>
+                        <span>
+                            <strong>Mulai Scan</strong>
+                            <small>Ambil satu frame dan jalankan YOLO</small>
+                        </span>
+                    </button>
+
+                    <button type="button" class="secondary-button" id="tareButton">
+                        <span>Zero / Tare</span>
+                        <small>Kosongkan timbangan dahulu</small>
+                    </button>
+                </div>
+            </section>
+
+            <section class="panel result-panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="section-kicker">SCAN RESULT</p>
+                        <h2>Hasil Analisis</h2>
+                    </div>
+                    <span class="result-state standby" id="resultState">Standby</span>
+                </div>
+
+                <div class="result-image-wrap" id="resultImageWrap">
+                    <img id="resultImage" alt="Hasil deteksi YOLO">
+                    <div class="result-placeholder" id="resultPlaceholder">
+                        <div class="scanner-orbit">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <strong>Belum ada hasil scan</strong>
+                        <p>Letakkan makanan dan tekan tombol Mulai Scan.</p>
+                    </div>
+                </div>
+
+                <div class="result-metrics">
+                    <div>
+                        <span>Makanan terdeteksi</span>
+                        <strong id="detectedLabel">—</strong>
+                    </div>
+                    <div>
+                        <span>Confidence</span>
+                        <strong id="detectedConfidence">0.00%</strong>
+                    </div>
+                    <div>
+                        <span>Berat</span>
+                        <strong id="detectedWeight">0.00 g</strong>
+                    </div>
+                    <div>
+                        <span>Jumlah objek</span>
+                        <strong id="detectedCount">0</strong>
+                    </div>
+                </div>
+
+                <div class="nutrition-block" id="nutritionBlock">
+                    <div class="nutrition-head">
+                        <span class="nutrition-title">Informasi Gizi</span>
+                        <span class="nutrition-basis" id="nutritionBasis">per 100g</span>
+                    </div>
+                    <div class="nutrition-grid">
+                        <div class="nutrition-item energi">
+                            <span>Energi</span>
+                            <strong id="nutriEnergi">—</strong>
+                            <small>kkal / 100g</small>
+                        </div>
+                        <div class="nutrition-item">
+                            <span>Protein</span>
+                            <strong id="nutriProtein">—</strong>
+                            <small>g / 100g</small>
+                        </div>
+                        <div class="nutrition-item">
+                            <span>Lemak</span>
+                            <strong id="nutriLemak">—</strong>
+                            <small>g / 100g</small>
+                        </div>
+                        <div class="nutrition-item">
+                            <span>Karbohidrat</span>
+                            <strong id="nutriKarbo">—</strong>
+                            <small>g / 100g</small>
+                        </div>
+                    </div>
+                    <div class="nutrition-total" id="nutritionTotal">
+                        <div>
+                            <span>Total Energi</span>
+                            <strong id="nutriTotalEnergi">—</strong>
+                        </div>
+                        <div>
+                            <span>Total Protein</span>
+                            <strong id="nutriTotalProtein">—</strong>
+                        </div>
+                        <div>
+                            <span>Total Lemak</span>
+                            <strong id="nutriTotalLemak">—</strong>
+                        </div>
+                        <div>
+                            <span>Total Karbo</span>
+                            <strong id="nutriTotalKarbo">—</strong>
+                        </div>
+                    </div>
+                    <small class="nutrition-note" id="nutritionNote">Belum ada makanan terdeteksi.</small>
+                </div>
+            </section>
+        </main>
+
+        <section class="panel inference-panel">
+            <div class="panel-header">
+                <div>
+                    <p class="section-kicker">INFERENCE VISUALIZATION</p>
+                    <h2>Alur Pemrosesan AI</h2>
+                </div>
+                <div class="inference-total">
+                    <span>Total waktu</span>
+                    <strong id="totalInference">0 ms</strong>
+                </div>
+            </div>
+
+            <div class="pipeline" id="pipeline">
+                <article class="pipeline-step" data-step="capture">
+                    <div class="step-number">01</div>
+                    <div class="step-content">
+                        <span>Capture frame</span>
+                        <strong id="captureTime">0 ms</strong>
+                        <div class="progress-track"><span></span></div>
+                    </div>
+                </article>
+                <article class="pipeline-step" data-step="preprocess">
+                    <div class="step-number">02</div>
+                    <div class="step-content">
+                        <span>Preprocessing</span>
+                        <strong id="preprocessTime">0 ms</strong>
+                        <div class="progress-track"><span></span></div>
+                    </div>
+                </article>
+                <article class="pipeline-step" data-step="inference">
+                    <div class="step-number">03</div>
+                    <div class="step-content">
+                        <span>YOLOv5 inference</span>
+                        <strong id="inferenceTime">0 ms</strong>
+                        <div class="progress-track"><span></span></div>
+                    </div>
+                </article>
+                <article class="pipeline-step" data-step="postprocess">
+                    <div class="step-number">04</div>
+                    <div class="step-content">
+                        <span>NMS & labeling</span>
+                        <strong id="postprocessTime">0 ms</strong>
+                        <div class="progress-track"><span></span></div>
+                    </div>
+                </article>
+                <article class="pipeline-step" data-step="weight">
+                    <div class="step-number">05</div>
+                    <div class="step-content">
+                        <span>Sinkronisasi berat</span>
+                        <strong id="weightTime">Ready</strong>
+                        <div class="progress-track"><span></span></div>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="analytics-grid">
+            <article class="panel chart-panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="section-kicker">RESEARCH DATA</p>
+                        <h2>Tren Berat</h2>
+                    </div>
+                    <span class="chart-unit">gram</span>
+                </div>
+                <canvas id="weightChart" height="220"></canvas>
+                <p class="chart-empty" id="weightChartEmpty">Data scan belum tersedia.</p>
+            </article>
+
+            <article class="panel chart-panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="section-kicker">MODEL PERFORMANCE</p>
+                        <h2>Confidence & Waktu Inferensi</h2>
+                    </div>
+                    <span class="chart-unit">%, ms</span>
+                </div>
+                <canvas id="performanceChart" height="220"></canvas>
+                <p class="chart-empty" id="performanceChartEmpty">Data scan belum tersedia.</p>
+            </article>
+        </section>
+
+        <section class="panel history-panel">
+            <div class="panel-header">
+                <div>
+                    <p class="section-kicker">EXPERIMENT LOG</p>
+                    <h2>Riwayat Pengukuran</h2>
+                </div>
+                <div class="history-actions">
+                    <a class="ghost-button export-button" id="exportCsv" href="/api/export/csv">CSV</a>
+                    <a class="ghost-button export-button" id="exportXlsx" href="/api/export/xlsx">XLSX</a>
+                    <a class="ghost-button export-button" id="exportPdf" href="/api/export/pdf">PDF</a>
+                    <button type="button" class="ghost-button" id="clearHistoryButton">
+                        Hapus riwayat
+                    </button>
+                </div>
+            </div>
+
+            <div class="history-toolbar">
+                <div class="range-filter" id="rangeFilter" role="group" aria-label="Filter rentang waktu">
+                    <button type="button" class="range-button" data-range="6h">6 jam</button>
+                    <button type="button" class="range-button" data-range="24h">24 jam</button>
+                    <button type="button" class="range-button" data-range="7d">7 hari</button>
+                    <button type="button" class="range-button" data-range="30d">30 hari</button>
+                    <button type="button" class="range-button active" data-range="all">Semua</button>
+                </div>
+                <span class="history-count" id="historyCount">—</span>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Foto</th>
+                            <th>ID</th>
+                            <th>Waktu</th>
+                            <th>Hasil deteksi</th>
+                            <th>Confidence</th>
+                            <th>Berat</th>
+                            <th>Nama file</th>
+                            <th>Inferensi</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody">
+                        <tr>
+                            <td colspan="9" class="empty-cell">Belum ada data.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer>
+            <span>FoodVision Analytics · Raspberry Pi Local Research Dashboard</span>
+            <span id="footerModel">Model: —</span>
+        </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="image-modal" id="imageModal" hidden>
+        <div class="image-modal-backdrop" data-close-modal></div>
+        <div class="image-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="imageModalTitle">
+            <div class="image-modal-header">
+                <div>
+                    <p class="section-kicker">SCAN PHOTO</p>
+                    <h3 id="imageModalTitle">—</h3>
+                    <small id="imageModalMeta">—</small>
+                </div>
+                <button type="button" class="ghost-button" id="imageModalClose" data-close-modal>Tutup</button>
+            </div>
+            <div class="image-modal-body">
+                <figure>
+                    <img id="imageModalAnnotated" alt="Hasil deteksi (annotated)">
+                    <figcaption>
+                        <span>Annotated</span>
+                        <code id="imageModalAnnotatedName">—</code>
+                    </figcaption>
+                </figure>
+                <figure id="imageModalOriginalFigure">
+                    <img id="imageModalOriginal" alt="Foto asli (original)">
+                    <figcaption>
+                        <span>Original</span>
+                        <code id="imageModalOriginalName">—</code>
+                    </figcaption>
+                </figure>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}?v=5"></script>
+</body>
+</html>

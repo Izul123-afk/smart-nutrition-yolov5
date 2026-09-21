@@ -1,0 +1,16 @@
+[Unit]
+Description=Food Recognition Flask Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/nutrisi2/food-recognition
+ExecStart=/home/nutrisi2/food-recognition/run.sh
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

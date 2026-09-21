@@ -1,0 +1,75 @@
+# =========================================================
+# Python & Bytecode Cache
+# =========================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================================================
+# Virtual Environments
+# =========================================================
+.venv/
+venv/
+ENV/
+env/
+
+# =========================================================
+# Environment Variables & Secrets
+# =========================================================
+.env
+.env.local
+.env.*.local
+
+# =========================================================
+# Editor & OS Files
+# =========================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================================================
+# Tooling & Internal Folders
+# =========================================================
+.kilo/
+
+# =========================================================
+# External Repositories / Submodules
+# yolov5 sudah memiliki repositori .git tersendiri
+# =========================================================
+yolov5/
+
+# =========================================================
+# Runtime Data, Database, & Output Images
+# =========================================================
+hasil_uji.jpg
+static/results/*
+!static/results/.gitkeep
+data/photos/*
+!data/photos/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# =========================================================
+# Model Weights (File Bobot Model / Binary Besar)
+# Catatan: Hapus tanda komentar '#' di bawah ini jika model
+# disimpan terpisah (misal di Google Drive / Git LFS) agar repo tetap ringan.
+# =========================================================
+*.pt
+*.onnx
+# *.engine
+# *.tflite
