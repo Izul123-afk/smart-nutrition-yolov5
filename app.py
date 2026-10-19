@@ -3,11 +3,9 @@ from __future__ import annotations
 import atexit
 from datetime import datetime, timedelta, timezone
 import logging
-import os
 import threading
 import time
 import traceback
-import uuid
 
 import cv2
 from flask import (
@@ -27,6 +25,7 @@ from services.database_service import DatabaseService
 from services.export_service import ExportService
 from services.hx711_service import HX711Service
 from services.nutrition_service import NutritionService
+from services.scan_service import ScanService
 from services.yolo_service import YOLOService
 
 
@@ -77,17 +76,25 @@ yolo_startup_error: str | None = None
 try:
     yolo_service = YOLOService(
         model_path=config.MODEL_PATH,
-        yolov5_path=config.YOLOV5_REPO,
         confidence=config.YOLO_CONFIDENCE,
         iou_threshold=config.YOLO_IOU_THRESHOLD,
         image_size=config.YOLO_IMAGE_SIZE,
         max_detections=config.YOLO_MAX_DETECTIONS,
         torch_threads=config.TORCH_THREADS,
+        class_confidences=getattr(config, "YOLO_CLASS_CONFIDENCE", None),
     )
 except Exception as error:
     yolo_startup_error = str(error)
     traceback.print_exc()
-    print("Model YOLOv5 gagal dimuat:", error)
+    print("Model deteksi gagal dimuat:", error)
+
+scan_service = ScanService(
+    yolo_service,
+    nutrition_service,
+    database_service,
+    base_dir=config.BASE_DIR,
+    photo_dir=config.PHOTO_DIR,
+)
 
 camera_service.start()
 hx711_service.start()
@@ -123,7 +130,7 @@ def _model_status() -> dict:
             "loaded": False,
             "error": yolo_startup_error,
             "model": config.MODEL_PATH.name,
-            "backend": "YOLOv5 PyTorch CPU",
+            "backend": "Ultralytics YOLOv8n PyTorch CPU",
             "image_size": config.YOLO_IMAGE_SIZE,
             "input_width": config.YOLO_IMAGE_SIZE,
             "input_height": config.YOLO_IMAGE_SIZE,
@@ -224,32 +231,6 @@ def api_tare():
         ), 500
 
 
-def _write_jpeg_atomic(output_path, frame) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_name(
-        f".{output_path.stem}.{uuid.uuid4().hex}.tmp.jpg"
-    )
-    try:
-        if not cv2.imwrite(str(temporary_path), frame):
-            raise RuntimeError(f"Gagal menulis gambar: {output_path}")
-        os.replace(temporary_path, output_path)
-    finally:
-        if temporary_path.exists():
-            temporary_path.unlink()
-
-
-def _remove_incomplete_scan(scan_directory, *paths) -> None:
-    for path in paths:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
-    try:
-        scan_directory.rmdir()
-    except OSError:
-        pass
-
-
 def _add_image_urls(record: dict) -> dict:
     scan_id = record.get("scan_id")
     if not scan_id:
@@ -273,119 +254,19 @@ def _add_image_urls(record: dict) -> dict:
 
 def run_scan(frame, source: str, capture_ms: float = 0.0) -> dict:
     if yolo_service is None:
-        raise RuntimeError(yolo_startup_error or "Model YOLOv5 belum tersedia.")
-
-    complete_started = time.perf_counter()
-    original_frame = frame.copy()
-    result = yolo_service.predict(frame)
-    annotated_frame = result.pop("annotated_frame")
-
-    scan_id = uuid.uuid4().hex[:12]
-    captured_at = datetime.now(timezone.utc)
-    timestamp = captured_at.isoformat(timespec="seconds")
-    scan_directory = (
-        config.PHOTO_DIR
-        / captured_at.strftime("%Y")
-        / captured_at.strftime("%m")
-        / captured_at.strftime("%d")
-        / scan_id
-    )
-    original_path = scan_directory / "original.jpg"
-    annotated_path = scan_directory / "annotated.jpg"
-
-    postprocess_started = time.perf_counter()
-    try:
-        _write_jpeg_atomic(original_path, original_frame)
-        _write_jpeg_atomic(annotated_path, annotated_frame)
-    except Exception:
-        _remove_incomplete_scan(
-            scan_directory,
-            original_path,
-            annotated_path,
-        )
-        raise
-    image_save_ms = (time.perf_counter() - postprocess_started) * 1000
+        raise RuntimeError(yolo_startup_error or "Model deteksi belum tersedia.")
 
     weight_started = time.perf_counter()
     weight = float(hx711_service.get_weight())
     weight_ms = (time.perf_counter() - weight_started) * 1000
 
-    confidence_percent = float(result.get("confidence", 0.0))
-    confidence_ratio = (
-        confidence_percent / 100.0
-        if confidence_percent > 1.0
-        else confidence_percent
+    response_data = scan_service.record(
+        frame,
+        source=source,
+        weight_grams=weight,
+        capture_ms=capture_ms,
     )
-
-    service_timings = result.get("timings") or {}
-    inference_ms = float(
-        service_timings.get("inference_ms", result.get("inference_ms", 0.0))
-    )
-    preprocess_ms = float(service_timings.get("preprocess_ms", 0.0))
-    model_postprocess_ms = float(service_timings.get("postprocess_ms", 0.0))
-    postprocess_ms = model_postprocess_ms + image_save_ms
-    complete_ms = (time.perf_counter() - complete_started) * 1000 + capture_ms
-
-    timings = {
-        "capture_ms": round(float(capture_ms), 2),
-        "preprocess_ms": round(preprocess_ms, 2),
-        "inference_ms": round(inference_ms, 2),
-        "postprocess_ms": round(postprocess_ms, 2),
-        "weight_ms": round(weight_ms, 2),
-        "complete_ms": round(complete_ms, 2),
-    }
-
-    food_name = result.get("food_name", "Tidak terdeteksi")
-    detections = result.get("detections", [])
-    nutrition = nutrition_service.calculate(food_name, weight)
-    model_status = _model_status()
-    original_relative = original_path.relative_to(config.BASE_DIR).as_posix()
-    annotated_relative = annotated_path.relative_to(config.BASE_DIR).as_posix()
-
-    response_data = _success_flag(
-        {
-            "scan_id": scan_id,
-            "timestamp": timestamp,
-            "source": source,
-            "detected": bool(result.get("detected")),
-            "food_name": food_name,
-            "makanan": food_name,
-            "label": food_name,
-            # Dipertahankan dalam persen seperti service saat ini.
-            "confidence": round(confidence_percent, 2),
-            "confidence_percent": round(confidence_percent, 2),
-            "confidence_ratio": round(confidence_ratio, 6),
-            "weight": round(weight, 2),
-            "berat": round(weight, 2),
-            "weight_grams": round(weight, 2),
-            "object_count": int(result.get("object_count", 0)),
-            "jumlah_objek": int(result.get("object_count", 0)),
-            "inference_ms": round(inference_ms, 2),
-            "inference_time_ms": round(inference_ms, 2),
-            "total_ms": round(complete_ms, 2),
-            "timings": timings,
-            "detections": detections,
-            "nutrition": nutrition,
-            "model_name": model_status.get("model"),
-            "model_input": model_status.get("image_size"),
-            "original_image_path": original_relative,
-            "annotated_image_path": annotated_relative,
-        }
-    )
-    try:
-        database_service.save_scan(
-            response_data,
-            detections,
-            timings,
-            nutrition,
-        )
-    except Exception:
-        _remove_incomplete_scan(
-            scan_directory,
-            original_path,
-            annotated_path,
-        )
-        raise
+    response_data["timings"]["weight_ms"] = round(weight_ms, 2)
     _add_image_urls(response_data)
     return response_data
 
@@ -548,11 +429,32 @@ def api_history_clear():
 def api_export(export_format: str):
     try:
         _range_key, since = _parse_history_range(request.args.get("range"))
-        artifact = export_service.create(export_format, since=since)
+        scan_id = request.args.get("scan_id") or None
+        artifact = export_service.create(
+            export_format, since=since, scan_id=scan_id
+        )
     except ValueError as error:
         return jsonify({"success": False, "ok": False, "error": str(error)}), 400
     except ImportError as error:
         return jsonify({"success": False, "ok": False, "error": f"Dependency export belum tersedia: {error}"}), 503
+
+    return send_file(
+        artifact.content,
+        mimetype=artifact.mimetype,
+        as_attachment=True,
+        download_name=artifact.filename,
+        max_age=0,
+    )
+
+
+@app.get("/api/scans/<scan_id>/export/jpg")
+def api_scan_export_jpg(scan_id: str):
+    try:
+        artifact = export_service.create("jpg", scan_id=scan_id)
+    except ValueError as error:
+        return jsonify({"success": False, "ok": False, "error": str(error)}), 400
+    if database_service.get_scan(scan_id) is None:
+        return jsonify({"success": False, "ok": False, "error": "Data scan tidak ditemukan."}), 404
 
     return send_file(
         artifact.content,

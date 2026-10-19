@@ -1,24 +1,39 @@
+Ayam Bakar
+Ayam Goreng
+Bakso
+Capcay Kuah
 Coto makassar
+Gule
+Ikan Bakar
+Ikan Goreng
+Kangkung
+Kare ayam
+Laksa
 Lodeh
-Mie ayam
+Lontong Sayur
+Mie Ayam
+Mie Kocok
+Nasi Goreng
+Nasi Putih
 Nasi Soto
+Nasi kuning
+Nasi pecel
+Ramen
 Rawon
-Sayur asem
+Rendang
+Sate Ayam
+Sayur Asem
 Seblak
-Soto-seblak-rawon-gulai-Lodeh
-sop ayam
-bakso
-capcay kuah
-gule
-kare ayam
-laksa
-lontong sayur
-mie kocok
-ramen
-sop ayam
-sop buntut
-sop iga
-sop kambing
-soto betawi
-tomyum
-tongseng
+Sop Ayam
+Sop Buntut
+Sop Iga
+Sop Kambing
+Soto Betawi
+Tahu Goreng
+Telur Balado
+Telur Goreng
+Telur Rebus
+Tempe Goreng
+Terong balado
+Tomyum
+Tongseng

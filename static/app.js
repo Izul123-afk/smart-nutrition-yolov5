@@ -1,25 +1,41 @@
 const NUTRITION_DB = {
-    "coto makassar": { energi: 96, protein: 6.8, lemak: 5.9, karbo: 3.8 },
-    "lodeh": { energi: 70, protein: 2.5, lemak: 5, karbo: 8 },
-    "mie ayam": { energi: 175, protein: 7, lemak: 7.8, karbo: 19.3 },
-    "nasi soto": { energi: 150, protein: 6, lemak: 4, karbo: 22 },
-    "rawon": { energi: 60, protein: 5.4, lemak: 2.5, karbo: 4 },
-    "sayur asem": { energi: 64, protein: 2.1, lemak: 0.6, karbo: 12.5 },
-    "seblak": { energi: 131, protein: 4.1, lemak: 6.7, karbo: 15.6 },
-    "soto-seblak-rawon-gulai-lodeh": { energi: 70, protein: 2.5, lemak: 5, karbo: 8 },
-    "sop ayam": { energi: 50, protein: 4, lemak: 2, karbo: 4 },
+    "ayam bakar": { energi: 190, protein: 24, lemak: 8, karbo: 3 },
+    "ayam goreng": { energi: 260, protein: 21.9, lemak: 14.6, karbo: 10.8 },
     "bakso": { energi: 190, protein: 10.3, lemak: 6.3, karbo: 23.1 },
     "capcay kuah": { energi: 80, protein: 4, lemak: 3.5, karbo: 7 },
+    "coto makassar": { energi: 96, protein: 6.8, lemak: 5.9, karbo: 3.8 },
     "gule": { energi: 126, protein: 4.2, lemak: 9.4, karbo: 6.2 },
+    "ikan bakar": { energi: 140, protein: 20, lemak: 5, karbo: 2 },
+    "ikan goreng": { energi: 167, protein: 13.3, lemak: 10, karbo: 6.7 },
+    "kangkung": { energi: 98, protein: 2.6, lemak: 8.7, karbo: 4 },
     "kare ayam": { energi: 135, protein: 8, lemak: 8, karbo: 6.6 },
     "laksa": { energi: 120, protein: 5, lemak: 7, karbo: 10.7 },
+    "lodeh": { energi: 70, protein: 2.5, lemak: 5, karbo: 8 },
     "lontong sayur": { energi: 90, protein: 2.5, lemak: 5, karbo: 9 },
+    "mie ayam": { energi: 175, protein: 7, lemak: 7.8, karbo: 19.3 },
     "mie kocok": { energi: 110, protein: 6, lemak: 3.5, karbo: 14 },
+    "nasi goreng": { energi: 173, protein: 7.3, lemak: 3.7, karbo: 27.6 },
+    "nasi putih": { energi: 180, protein: 3, lemak: 0.3, karbo: 39.8 },
+    "nasi soto": { energi: 150, protein: 6, lemak: 4, karbo: 22 },
+    "nasi kuning": { energi: 95, protein: 1.9, lemak: 0.2, karbo: 20.9 },
+    "nasi pecel": { energi: 230, protein: 6.6, lemak: 9.3, karbo: 31.7 },
     "ramen": { energi: 140, protein: 6, lemak: 5, karbo: 17 },
+    "rawon": { energi: 60, protein: 5.4, lemak: 2.5, karbo: 4 },
+    "rendang": { energi: 193, protein: 22.6, lemak: 7.9, karbo: 7.8 },
+    "sate ayam": { energi: 225, protein: 19.5, lemak: 14.8, karbo: 4.9 },
+    "sayur asem": { energi: 64, protein: 2.1, lemak: 0.6, karbo: 12.5 },
+    "seblak": { energi: 131, protein: 4.1, lemak: 6.7, karbo: 15.6 },
+    "sop ayam": { energi: 50, protein: 4, lemak: 2, karbo: 4 },
     "sop buntut": { energi: 71, protein: 7.5, lemak: 3.6, karbo: 2.2 },
     "sop iga": { energi: 90, protein: 8, lemak: 5, karbo: 2.5 },
     "sop kambing": { energi: 34, protein: 5.5, lemak: 0.8, karbo: 1.1 },
     "soto betawi": { energi: 110, protein: 2.9, lemak: 9.5, karbo: 3.2 },
+    "tahu goreng": { energi: 115, protein: 9.7, lemak: 8.5, karbo: 2.5 },
+    "telur balado": { energi: 202, protein: 10, lemak: 16, karbo: 3.5 },
+    "telur goreng": { energi: 166, protein: 14.2, lemak: 11.2, karbo: 0.9 },
+    "telur rebus": { energi: 155, protein: 12.6, lemak: 10.6, karbo: 1.2 },
+    "tempe goreng": { energi: 225, protein: 13.3, lemak: 15.2, karbo: 11.9 },
+    "terong balado": { energi: 97, protein: 1.2, lemak: 8, karbo: 7.1 },
     "tomyum": { energi: 45, protein: 3.5, lemak: 1.5, karbo: 3 },
     "tongseng": { energi: 115, protein: 6, lemak: 6.5, karbo: 7 },
 };
@@ -104,8 +120,6 @@ const elements = {
     historyBody: document.getElementById("historyBody"),
     historyCount: document.getElementById("historyCount"),
     rangeFilter: document.getElementById("rangeFilter"),
-    exportCsv: document.getElementById("exportCsv"),
-    exportXlsx: document.getElementById("exportXlsx"),
     exportPdf: document.getElementById("exportPdf"),
     imageModal: document.getElementById("imageModal"),
     imageModalTitle: document.getElementById("imageModalTitle"),
@@ -204,10 +218,10 @@ async function fetchStatus() {
 
         elements.modelStatus.textContent = model.loaded ? "Siap" : "Belum siap";
         elements.modelDetail.textContent = model.loaded
-            ? `${model.model || "best.pt"} · ${modelSize || "?"}×${modelSize || "?"}`
+            ? `${model.model || "best2.pt"} · ${modelSize || "?"}×${modelSize || "?"}`
             : model.error || "Model tidak ditemukan";
         elements.footerModel.textContent = model.loaded
-            ? `Model: ${model.model || "best.pt"} · ${model.backend || "YOLOv5"}`
+            ? `Model: ${model.model || "best2.pt"} · ${model.backend || "YOLOv8n"}`
             : "Model: belum tersedia";
 
         const allReady = Boolean(
@@ -468,10 +482,10 @@ function syncRangeUi() {
             button.dataset.range === state.historyRange,
         );
     });
-    // Export mengikuti filter yang sedang aktif.
-    elements.exportCsv.href = `/api/export/csv?${historyQuery()}`;
-    elements.exportXlsx.href = `/api/export/xlsx?${historyQuery()}`;
-    elements.exportPdf.href = `/api/export/pdf?${historyQuery()}`;
+    // Export hanya PDF mengikuti filter yang sedang aktif.
+    if (elements.exportPdf) {
+        elements.exportPdf.href = `/api/export/pdf?${historyQuery()}`;
+    }
 }
 
 function renderHistoryCount() {

@@ -32,7 +32,7 @@ class DatabaseServiceTests(unittest.TestCase):
             "confidence_ratio": 0.915,
             "weight_grams": 125.0,
             "object_count": 1,
-            "model_name": "best.pt",
+            "model_name": "best2.pt",
             "model_input": 640,
             "original_image_path": "data/photos/abc123/original.jpg",
             "annotated_image_path": "data/photos/abc123/annotated.jpg",

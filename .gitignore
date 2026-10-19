@@ -59,6 +59,9 @@ static/results/*
 !static/results/.gitkeep
 data/photos/*
 !data/photos/.gitkeep
+data/exports/*
+gambar/*
+!gambar/README.md
 *.db
 *.sqlite
 *.sqlite3
@@ -73,3 +76,6 @@ data/photos/*
 *.onnx
 # *.engine
 # *.tflite
+
+# Backup folder .git (tidak boleh ikut ke repo)
+.git.zip

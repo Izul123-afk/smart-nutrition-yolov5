@@ -1,6 +1,6 @@
 # 🥗 FoodVision AI Dashboard
 
-**FoodVision AI Dashboard** adalah sistem dashboard cerdas berbasis **Raspberry Pi**, **Flask**, **YOLOv5 (ONNX/PyTorch)**, dan sensor timbangan **HX711 (Load Cell)** untuk pengenalan jenis makanan sekaligus penghitungan nilai nutrisi (kalori, protein, lemak, dan karbohidrat) secara real-time berdasarkan berat aktual porsi makanan.
+**FoodVision AI Dashboard** adalah sistem dashboard cerdas berbasis **Raspberry Pi**, **Flask**, **YOLOv8n (Ultralytics PyTorch)**, dan sensor timbangan **HX711 (Load Cell)** untuk pengenalan jenis makanan sekaligus penghitungan nilai nutrisi (kalori, protein, lemak, dan karbohidrat) secara real-time berdasarkan berat aktual porsi makanan.
 
 Proyek ini dirancang hemat daya dan sumber daya, dengan pemrosesan inferensi AI on-demand (hanya saat tombol scan ditekan), sehingga video feed kamera tetap lancar tanpa membebani prosesor Raspberry Pi secara terus-menerus.
 
@@ -9,7 +9,7 @@ Proyek ini dirancang hemat daya dan sumber daya, dengan pemrosesan inferensi AI 
 ## 🌟 Fitur Utama
 
 - **Live Camera Stream (MJPEG)**: Preview kamera real-time yang ringan tanpa lag inferensi kontinu.
-- **On-Demand YOLOv5 Inference**: Deteksi objek makanan dijalankan hanya saat diminta (*single-shot inference*), menghemat beban CPU & RAM.
+- **On-Demand YOLOv8n Inference**: Deteksi objek makanan dijalankan hanya saat diminta (*single-shot inference*), menghemat beban CPU & RAM.
 - **Timbangan Presisi HX711**: Pembacaan berat real-time dilengkapi fitur **Tare / Zeroing** dan filter *Moving Average* untuk meminimalisasi noise / getaran.
 - **Analisis Nutrisi Otomatis**: Integrasi otomatis antara hasil deteksi makanan dan berat gram aktual dengan database gizi (`csv.csv`).
 - **Penyimpanan Permanen (SQLite & Foto)**: Setiap pemindaian tercatat di database SQLite lokal (`data/food_recognition.db`) dan arsip foto (original & annotated) tersusun rapi berdasarkan tanggal.
@@ -26,7 +26,7 @@ food_ai_dashboard/
 ├── config.py                  # Konfigurasi global (kamera, pin GPIO, path, YOLO, dll.)
 ├── run.sh                     # Script shell runner (otomatis aktivasi virtualenv)
 ├── requirements.txt           # Kebutuhan library Python
-├── best.onnx / best.pt        # Model deteksi YOLOv5
+├── best2.pt               # Model deteksi YOLOv8n (Ultralytics .pt)
 ├── classes.txt                # Daftar nama kelas makanan
 ├── csv.csv                    # Database kandungan nutrisi per 100 gram
 ├── images.jpg                 # Gambar sampel untuk pengujian offline
@@ -34,10 +34,11 @@ food_ai_dashboard/
 ├── services/                  # Business logic modular
 │   ├── camera_service.py      # Pengendali stream dan capture frame kamera
 │   ├── database_service.py    # Handler database SQLite dan manajemen riwayat
-│   ├── export_service.py      # Generator file export (CSV, XLSX, PDF)
+│   ├── export_service.py      # Generator file export (CSV, XLSX, PDF, JPG)
 │   ├── hx711_service.py       # Handler sensor timbangan HX711 & tare
-│   ├── label_mapping.py       # Mapping label deteksi ke kelas nutrisi
-│   └── yolo_service.py        # Pipeline inferensi YOLOv5 (ONNX Runtime / PyTorch)
+│   ├── nutrition_service.py   # Hitung nutrisi dari csv.csv berdasarkan berat
+│   ├── scan_service.py        # Simpan satu hasil scan (foto, nutrisi, database)
+│   └── yolo_service.py        # Pipeline inferensi deteksi (ultralytics, PyTorch CPU)
 │
 ├── static/                    # Asset web statis (CSS, JS, hasil scan)
 │   ├── app.js                 # Logika interaktif frontend (AJAX, chart, tare, scan)
@@ -111,7 +112,7 @@ pip install --no-cache-dir onnxruntime
 ```
 
 ### 4. Persiapan Model & Kelas
-1. Pastikan model terlatih Anda berada di root folder dengan nama `best.onnx` (atau `best.pt`).
+1. Pastikan model terlatih YOLOv8n Anda berada di root folder dengan nama `best2.pt` (sesuai `MODEL_PATH` di `config.py`).
 2. Sesuaikan file `classes.txt` dengan daftar kelas dataset Anda (urutan harus sama persis dengan `data.yaml` saat pelatihan YOLO):
    ```text
    nasi_goreng
@@ -129,7 +130,7 @@ Pengaturan parameter utama dapat disesuaikan pada file `config.py`:
 
 ```python
 # Model & Kamera
-MODEL_PATH = BASE_DIR / "best.pt"      # atau "best.onnx"
+MODEL_PATH = BASE_DIR / "best2.pt"     # checkpoint YOLOv8n Ultralytics
 CAMERA_INDEX = 0                      # Indeks /dev/videoX
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
@@ -204,7 +205,7 @@ Agar dashboard otomatis berjalan saat Raspberry Pi dinyalakan:
    - Sensor mencatat berat porsi saat pemindaian.
    - Model YOLO mendeteksi jenis makanan dan bounding box.
    - Sistem mengkalkulasi nutrisi sesuai porsi berat dan menampilkan hasilnya di layar.
-5. **Riwayat & Laporan**: Riwayat pemindaian dapat difilter berdasarkan rentang waktu (`6h`, `24h`, `7d`, `30d`, `Semua`) dan diunduh dalam format **CSV**, **Excel**, atau **PDF**.
+5. **Riwayat & Laporan**: Riwayat pemindaian dapat difilter berdasarkan rentang waktu (`6h`, `24h`, `7d`, `30d`, `Semua`) dan diunduh dalam format **CSV**, **Excel**, **PDF**, atau **JPG** (1 scan = `.jpg` langsung, banyak scan = `.zip` berisi JPG per scan).
 
 ---
 
@@ -225,6 +226,9 @@ Agar dashboard otomatis berjalan saat Raspberry Pi dinyalakan:
 | `GET` | `/api/export/csv` | Mengunduh file export riwayat format CSV |
 | `GET` | `/api/export/xlsx` | Mengunduh file export riwayat format Excel |
 | `GET` | `/api/export/pdf` | Mengunduh file laporan cetak format PDF |
+| `GET` | `/api/export/jpg` | Mengunduh kartu laporan JPG (1 scan = `.jpg`, banyak scan = `.zip`) |
+| `GET` | `/api/export/jpeg` | Alias dari `/api/export/jpg` |
+| `GET` | `/api/scans/<id>/export/jpg` | Mengunduh JPG langsung untuk satu scan |
 
 ---
 
@@ -238,11 +242,11 @@ Agar dashboard otomatis berjalan saat Raspberry Pi dinyalakan:
 - Jika ada proses lain, hentikan dengan `kill -9 <PID>`.
 
 ### 2. Inferensi Terlalu Lambat di Raspberry Pi 3
-- Ekspor model YOLOv5 ke format ONNX dengan resolusi input lebih kecil (misal: 320x320):
+- Ekspor model YOLOv8n ke format ONNX dengan resolusi input lebih kecil (misal: 640, atau 320 untuk Pi lambat):
   ```bash
-  python export.py --weights best.pt --include onnx --img 320
+  yolo export model=best2.pt format=onnx imgsz=640
   ```
-- Gunakan varian arsitektur terkecil seperti **YOLOv5n (Nano)**.
+- Gunakan varian arsitektur terkecil **YOLOv8n (Nano)**; varian `n` sudah dipakai default.
 - Atur `TORCH_THREADS = 2` pada `config.py` untuk mencegah CPU throttle.
 
 ### 3. Timbangan Menunjukkan Nilai Tidak Akurat

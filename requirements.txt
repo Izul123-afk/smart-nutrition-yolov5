@@ -2,5 +2,9 @@ Flask>=3.0,<4
 numpy>=1.26
 openpyxl>=3.1,<4
 reportlab>=4,<5
-# PyTorch CPU dan torchvision dipasang dari indeks resmi CPU.
-# Dependency YOLOv5 dipasang dari ~/Documents/yolov5/requirements.txt.
+Pillow>=10
+opencv-python>=4.8
+torch>=2.0
+ultralytics>=8.0
+# onnxruntime hanya dibutuhkan bila memakai model .onnx (lihat test.py).
+onnxruntime>=1.17

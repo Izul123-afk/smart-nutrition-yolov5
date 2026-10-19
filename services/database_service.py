@@ -312,15 +312,41 @@ class DatabaseService:
             since = since.astimezone(timezone.utc).isoformat(timespec="seconds")
         return " AND s.captured_at >= ?", [str(since)]
 
+    @staticmethod
+    def _scan_clause(
+        scan_id: str | None = None,
+        scan_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> tuple[str, list[str]]:
+        if scan_ids is not None:
+            ids = [str(item).strip() for item in scan_ids if str(item).strip()]
+            if not ids:
+                return " AND 1 = 0", []
+            # Hapus duplikat sambil menjaga urutan.
+            seen: set[str] = set()
+            unique: list[str] = []
+            for value in ids:
+                if value not in seen:
+                    seen.add(value)
+                    unique.append(value)
+            placeholders = ", ".join("?" for _ in unique)
+            return f" AND s.scan_id IN ({placeholders})", unique
+        if scan_id is None:
+            return "", []
+        return " AND s.scan_id = ?", [str(scan_id)]
+
     def list_scans(
         self,
         limit: int | None = 100,
         offset: int = 0,
         since: datetime | str | None = None,
+        scan_id: str | None = None,
+        scan_ids: list[str] | tuple[str, ...] | None = None,
     ) -> list[dict]:
         since_sql, parameters = self._since_clause(since)
+        scan_sql, scan_parameters = self._scan_clause(scan_id, scan_ids)
+        parameters.extend(scan_parameters)
         sql = self._select_sql() + f"""
-            WHERE s.deleted_at IS NULL{since_sql}
+            WHERE s.deleted_at IS NULL{since_sql}{scan_sql}
             ORDER BY s.captured_at DESC, s.created_at DESC
         """
         if limit is not None:
@@ -374,10 +400,17 @@ class DatabaseService:
             return int(cursor.rowcount)
 
     def export_dataset(
-        self, since: datetime | str | None = None
+        self,
+        since: datetime | str | None = None,
+        scan_id: str | None = None,
+        scan_ids: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, list[dict]]:
-        scans = self.list_scans(limit=None, since=since)
+        scans = self.list_scans(
+            limit=None, since=since, scan_id=scan_id, scan_ids=scan_ids
+        )
         since_sql, parameters = self._since_clause(since)
+        scan_sql, scan_parameters = self._scan_clause(scan_id, scan_ids)
+        parameters.extend(scan_parameters)
         with self._reader() as connection:
             detections = [
                 dict(row)
@@ -387,7 +420,7 @@ class DatabaseService:
                            d.confidence_percent, d.x1, d.y1, d.x2, d.y2
                     FROM detections AS d
                     JOIN scans AS s ON s.scan_id = d.scan_id
-                    WHERE s.deleted_at IS NULL{since_sql}
+                    WHERE s.deleted_at IS NULL{since_sql}{scan_sql}
                     ORDER BY s.captured_at DESC, d.id
                     """,
                     parameters,

@@ -8,36 +8,54 @@ import time
 import cv2
 import numpy as np
 import torch
-
-from services.label_mapping import get_display_label
+from ultralytics import YOLO
 
 
 class YOLOService:
     """
-    Service inferensi YOLOv5 best.pt.
+    Service inferensi model deteksi YOLOv8n (Ultralytics).
 
-    Model menggunakan PyTorch CPU.
-    Model hanya dijalankan ketika tombol scan ditekan.
+    Checkpoint ``best2.pt`` adalah model YOLOv8n hasil training
+    (.pt Ultralytics), sehingga dimuat lewat API ``ultralytics.YOLO``.
+    Model menggunakan PyTorch CPU dan hanya dijalankan saat tombol
+    scan ditekan (single-shot inference).
+
+    Berbeda dari YOLOv5, YOLOv8 bersifat anchor-free tanpa objectness
+    score terpisah — skor class langsung menjadi confidence. Seluruh
+    decoding + NMS ditangani oleh ``model.predict()``, service ini
+    hanya memformat hasilnya ke dict standar aplikasi.
     """
 
     def __init__(
         self,
         model_path: str | Path,
-        yolov5_path: str | Path,
         confidence: float = 0.25,
         iou_threshold: float = 0.45,
         image_size: int = 640,
-        max_detections: int = 10,
+        max_detections: int = 1,
         torch_threads: int = 2,
+        class_confidences: dict[str, float] | None = None,
     ) -> None:
 
         self.model_path = Path(
             model_path
         ).resolve()
 
-        self.yolov5_path = Path(
-            yolov5_path
-        ).resolve()
+        self.confidence = confidence
+
+        # Threshold per-kelas, mis. {"bakso": 0.20}. Key dinormalisasi
+        # ke lowercase agar pencocokan nama kelas tidak case-sensitive.
+        self.class_confidences: dict[str, float] = {}
+        if class_confidences:
+            for name, value in class_confidences.items():
+                try:
+                    self.class_confidences[str(name).lower()] = float(value)
+                except (TypeError, ValueError):
+                    continue
+
+        self.iou_threshold = iou_threshold
+
+        self.max_detections = max_detections
 
         self.image_size = image_size
 
@@ -50,16 +68,8 @@ class YOLOService:
         if not self.model_path.exists():
 
             raise FileNotFoundError(
-                "best.pt tidak ditemukan: "
+                f"Model YOLOv8n tidak ditemukan: "
                 f"{self.model_path}"
-            )
-
-
-        if not self.yolov5_path.exists():
-
-            raise FileNotFoundError(
-                "Folder YOLOv5 tidak ditemukan: "
-                f"{self.yolov5_path}"
             )
 
 
@@ -79,47 +89,17 @@ class YOLOService:
 
 
         print(
-            "Memuat model YOLOv5 best.pt..."
+            f"Memuat model YOLOv8n: {self.model_path.name}..."
         )
 
 
-        # Memuat model dari repository YOLOv5 lokal
-        self.model = torch.hub.load(
-
-            str(self.yolov5_path),
-
-            "custom",
-
-            path=str(self.model_path),
-
-            source="local",
-
-            force_reload=False,
-
-            verbose=False,
-
+        # Checkpoint YOLOv8n Ultralytics, dimuat lewat API resminya
+        self.model = YOLO(
+            str(self.model_path)
         )
 
 
-        self.model.to("cpu")
-
-        self.model.eval()
-
-
-        self.model.conf = confidence
-
-        self.model.iou = iou_threshold
-
-        self.model.max_det = (
-            max_detections
-        )
-
-
-        # Jangan gunakan AMP pada Raspberry Pi CPU
-        self.model.amp = False
-
-
-        # Nama kelas langsung dari best.pt
+        # Nama kelas langsung dari checkpoint (model.names)
         self.class_names = (
             self.model.names
         )
@@ -129,11 +109,11 @@ class YOLOService:
 
 
         print(
-            "Model YOLOv5 berhasil dimuat."
+            "Model YOLOv8n berhasil dimuat."
         )
 
         print(
-            "Nama kelas dari best.pt:",
+            f"Nama kelas dari {self.model_path.name}:",
             self.class_names,
         )
 
@@ -152,7 +132,7 @@ class YOLOService:
             dict,
         ):
 
-            model_class_name = str(
+            return str(
 
                 self.class_names.get(
 
@@ -164,10 +144,6 @@ class YOLOService:
 
             )
 
-            return get_display_label(
-                model_class_name
-            )
-
 
         if (
             0
@@ -175,20 +151,26 @@ class YOLOService:
             < len(self.class_names)
         ):
 
-            model_class_name = str(
+            return str(
                 self.class_names[class_id]
-            )
-
-            return get_display_label(
-                model_class_name
             )
 
 
         return f"class_{class_id}"
 
 
+    def _threshold_for(self, class_name: str) -> float:
+        """Threshold conf untuk satu kelas (0-1). Default = self.confidence."""
+        return self.class_confidences.get(str(class_name).lower(), self.confidence)
+
+    def _effective_confidence(self) -> float:
+        """Threshold terendah yang diteruskan ke model.predict()."""
+        if not self.class_confidences:
+            return self.confidence
+        return min([self.confidence, *self.class_confidences.values()])
+
     # =====================================================
-    # INFERENCE
+    # INFERENCE (YOLOv8n anchor-free via ultralytics)
     # =====================================================
 
     def predict(
@@ -209,17 +191,6 @@ class YOLOService:
         original_frame = frame.copy()
 
 
-        # Model AutoShape YOLOv5 dapat menerima numpy
-        # tetapi RGB lebih konsisten dengan proses detect.py
-        rgb_frame = cv2.cvtColor(
-
-            original_frame,
-
-            cv2.COLOR_BGR2RGB,
-
-        )
-
-
         with self._lock:
 
             started_at = (
@@ -229,15 +200,29 @@ class YOLOService:
 
             try:
 
-                with torch.inference_mode():
+                # ultralytics menerima numpy BGR dan mengonversinya
+                # ke RGB sendiri, jadi frame diteruskan apa adanya.
+                # imgsz YOLOv8n default 640 (bisa 320/416 untuk Pi lambat).
+                # Pakai threshold terendah agar kelas yang diturunkan
+                # (mis. bakso 0.20) tetap lolos dari model, lalu saring
+                # per-kelas di bawah setelah NMS.
+                results = self.model.predict(
 
-                    results = self.model(
+                    original_frame,
 
-                        rgb_frame,
+                    conf=self._effective_confidence(),
 
-                        size=self.image_size,
+                    iou=self.iou_threshold,
 
-                    )
+                    imgsz=self.image_size,
+
+                    max_det=self.max_detections,
+
+                    device="cpu",
+
+                    verbose=False,
+
+                )[0]
 
 
                 inference_ms = (
@@ -248,31 +233,25 @@ class YOLOService:
                 ) * 1000
 
 
-                # Format:
+                # Format ultralytics (sudah termasuk NMS):
                 # x1, y1, x2, y2, confidence, class_id
-                predictions = (
+                # confidence YOLOv8 = skor class langsung (tanpa objectness).
+                boxes = results.boxes
 
-                    results.xyxy[0]
-
-                    .detach()
-
-                    .cpu()
-
-                    .numpy()
-
-                )
-
+                if boxes is None or len(boxes) == 0:
+                    predictions = np.empty((0, 6))
+                else:
+                    predictions = np.column_stack(
+                        (
+                            boxes.xyxy.cpu().numpy(),
+                            boxes.conf.cpu().numpy(),
+                            boxes.cls.cpu().numpy(),
+                        )
+                    )
 
                 detections: list[dict] = []
 
-
-                annotated_frame = (
-                    original_frame.copy()
-                )
-
-
                 for prediction in predictions:
-
                     (
                         x1,
                         y1,
@@ -282,120 +261,78 @@ class YOLOService:
                         class_id,
                     ) = prediction.tolist()
 
+                    class_id = int(class_id)
+                    confidence = float(confidence)
 
-                    class_id = int(
-                        class_id
-                    )
-
-                    confidence = float(
-                        confidence
-                    )
-
-
-                    class_name = (
-                        self._get_class_name(
-                            class_id
-                        )
-                    )
-
+                    class_name = self._get_class_name(class_id)
 
                     x1 = int(round(x1))
                     y1 = int(round(y1))
                     x2 = int(round(x2))
                     y2 = int(round(y2))
 
-
                     detection_data = {
-
                         "class_id": class_id,
-
-                        "class_name": (
-                            class_name
-                        ),
-
+                        "class_name": (class_name),
                         "confidence": round(
                             confidence * 100,
                             2,
                         ),
-
                         "box": {
-
                             "x1": x1,
-
                             "y1": y1,
-
                             "x2": x2,
-
                             "y2": y2,
-
                         },
-
                     }
 
+                    # Saring per-kelas: bakso boleh lolos di threshold
+                    # yang lebih rendah, kelas lain tetap di default.
+                    if confidence + 1e-9 < self._threshold_for(class_name):
+                        continue
 
-                    detections.append(
-                        detection_data
-                    )
+                    detections.append(detection_data)
 
+                # Confidence tertinggi di urutan pertama,
+                # lalu HANYA ambil top-N sesuai konfigurasi.
+                detections.sort(
+                    key=lambda item: (item["confidence"]),
+                    reverse=True,
+                )
+                detections = detections[: max(1, self.max_detections)]
 
+                annotated_frame = original_frame.copy()
+
+                for detection_data in detections:
+                    box = detection_data["box"]
+                    x1, y1 = box["x1"], box["y1"]
+                    x2, y2 = box["x2"], box["y2"]
                     label = (
-
-                        f"{class_name} "
-
-                        f"{confidence * 100:.1f}%"
-
+                        f"{detection_data['class_name']} "
+                        f"{detection_data['confidence']:.1f}%"
                     )
-
 
                     cv2.rectangle(
-
                         annotated_frame,
-
                         (x1, y1),
-
                         (x2, y2),
-
                         (0, 255, 0),
-
                         2,
-
                     )
 
-
                     cv2.putText(
-
                         annotated_frame,
-
                         label,
-
                         (
                             x1,
                             max(25, y1 - 10),
                         ),
-
                         cv2.FONT_HERSHEY_SIMPLEX,
-
                         0.65,
-
                         (0, 255, 0),
-
                         2,
-
                         cv2.LINE_AA,
-
                     )
-
-
-                # Confidence tertinggi di urutan pertama
-                detections.sort(
-
-                    key=lambda item: (
-                        item["confidence"]
-                    ),
-
-                    reverse=True,
-
-                )
 
 
                 if detections:
@@ -487,11 +424,19 @@ class YOLOService:
             ),
 
             "backend": (
-                "YOLOv5 PyTorch CPU"
+                "Ultralytics YOLOv8n PyTorch CPU"
             ),
 
             "image_size": (
                 self.image_size
+            ),
+
+            "confidence": (
+                self.confidence
+            ),
+
+            "class_confidences": (
+                dict(self.class_confidences)
             ),
 
             "classes": (
